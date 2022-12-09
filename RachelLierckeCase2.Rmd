@@ -1,0 +1,499 @@
+---
+title: "Case2 Project"
+author: "Rachel Liercke"
+date: "2022-12-01"
+output: html_document
+---
+
+# Introduction
+
+## DDSAnalytics has been asked by a Fortune 100 company to run a thorough analysis on predicting if a person stay/leaves (Attrition) as well as Salary based on a dataset of numerous variables.
+
+## I have been tasked with finding the top three variables that influence Attrition, and determing models that best fit the prediction of Attrition and Salary given a dataset without these respective values.
+## I will discuss below what work has been done to provide these details.
+
+
+
+### To start, upload the files (case2), along with the No Attrition and No Salary files. Also, download any packages that will be needed to complete the analysis.
+
+```{r}
+library(RCurl) 
+library(jsonlite)
+library(tidyverse)
+library(aws.s3)
+library(caret)
+library(class)
+library(olsrr)
+library(readxl)
+library(e1071)
+library(ggplot2)
+library(ggthemes)
+library(GGally)
+library(dplyr)
+
+
+#Read in case2 file
+case2 <- read.csv("C:/Users/rache/Documents/DDS/Unit 14/case2.csv")
+
+#Read in case2 No attrition file
+case2NA <- read.csv("C:/Users/rache/Documents/DDS/Unit 14/CaseStudy2CompSet_No_Attrition.csv")
+
+#Read in case2 No salary file
+case2NS <- read_excel("C:/Users/rache/Documents/DDS/Unit 14/CaseStudy2CompSet_No_Salary.xlsx")
+
+
+```
+
+### We will remove the variables that won't influence the data because they are all the same values
+```{r}
+
+#Time to get to work: Find linear regression model 
+#And which factors might be influential
+
+case2x <- case2[,-10]
+case2x <- case2x[,-22]
+case2x <- case2x[,-26]
+
+
+```
+
+### Change the variables that are character into factors so we can use linear regression.
+```{r}
+
+#change variables to factors and rename the levels to factored values
+case2x$BusinessTravel <- as.factor(case2x$BusinessTravel)
+case2x$Department <- as.factor(case2x$Department)
+case2x$EducationField <- as.factor(case2x$EducationField)
+case2x$Gender <- as.factor(case2x$Gender)
+case2x$JobRole <- as.factor(case2x$JobRole)
+case2x$MaritalStatus <- as.factor(case2x$MaritalStatus)
+case2x$OverTime <- as.factor(case2x$OverTime)
+case2x$Attrition <- as.factor(case2x$Attrition)
+
+
+#Gender levels: 1=Male 2=Female
+levels(case2x$Gender) <- c(1,2)
+levels(case2x$Gender)
+#OverTime levels: 1=Yes 2=No
+levels(case2x$OverTime) <- c(1,2)
+levels(case2x$OverTime)
+#MaritalStatus levels: 1=Divorced 2=Married 3=Single
+levels(case2x$MaritalStatus) <- c(1,2,3)
+levels(case2x$MaritalStatus)
+#BusinessTravel levels:1=Non-Travel, 2=Travel Frequently 3=Travel Rarely
+levels(case2x$BusinessTravel) <- c(1,2,3)
+levels(case2x$BusinessTravel)
+#Department levels: 1=Human Resources(HR) 2=Research & Development(R&D) 3= Sales
+levels(case2x$Department) <- c(1,2,3)
+levels(case2x$Department)
+#EducationField levels: 1= Human Resources(HR) 2=Life Sciences 3=Marketing
+# 4=Medical 5=Other 6=Technical Degree
+levels(case2x$EducationField) <- c(1,2,3,4,5,6)
+levels(case2x$EducationField)
+#JobRole levels: 1=Healthcare Representative 2=Human Resources 3=Laboratory Tech
+# 4=Manager 5=Manufacturing Director 6=Research Director
+# 7=Research Scientist 8=Sales Executive 9=Sales Representative
+levels(case2x$JobRole) <- c(1,2,3,4,5,6,7,8,9)
+levels(case2x$JobRole)
+#Attrition levels:
+levels(case2x$Attrition) <- c(1,2)
+levels(case2x$Attrition)
+
+
+
+case2x<-na.omit(case2x)
+
+
+
+case2x$OverTime<- as.numeric(case2x$OverTime)
+case2x$BusinessTravel <- as.numeric(case2x$BusinessTravel)
+case2x$Department <- as.numeric(case2x$Department)
+case2x$EducationField <- as.numeric(case2x$EducationField)
+case2x$Gender <- as.numeric(case2x$Gender)
+case2x$JobRole <- as.numeric(case2x$JobRole)
+case2x$MaritalStatus <- as.numeric(case2x$MaritalStatus)
+case2x$Attrition <- as.integer(case2x$Attrition)
+
+```
+
+## To start we will look at some job trends that we found.
+### We will initally look at a ggpairs plot of 3 variables that I think will be influential to Job Role.
+```{r}
+#To give us an idea of the distribution of Job Roles. We can see that Sales Executive has the highest number of participants in this dataset.
+case2%>%ggplot(aes(x=JobRole, fill=JobRole)) +geom_histogram(stat = "count") + ggtitle("Job Role Distribution")+
+  theme_solarized()
+
+#pairs of what I think is important
+case2%>% select(JobSatisfaction,JobRole,OverTime,MaritalStatus)%>% ggpairs(aes(color=JobRole))
+
+```
+### We can see that this plot doesn't give us very many trends so we will explore some these individually.
+### We will look at this in a count plot and then at percentages so we can easily compare the difference
+```{r}
+
+#Based on this look at job role and job satisfaction
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=JobSatisfaction,fill=JobRole)) +geom_bar(stat = 'count',color ="black") + ggtitle("Job Satisfaction by Job Role")+
+  theme_solarized()  
+
+x + scale_fill_hc()
+#percentages
+y<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=JobSatisfaction,fill=JobRole)) +geom_bar(position="fill",color ="black") + ggtitle("Job Satisfaction by Job Role")+
+  theme_solarized() 
+  
+  
+  
+
+#OverTime
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=OverTime,fill=JobRole)) +geom_bar(stat = 'count',color ="black") + ggtitle("OverTime by Job Role" )+
+  theme_solarized()  
+
+x + scale_fill_hc()
+
+
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=OverTime,fill=JobRole)) +geom_bar(position="fill",color ="black") + ggtitle("OverTime by Job Role")+
+  theme_solarized()  
+
+x + scale_fill_hc()
+
+
+
+
+#MaritalStatus
+x<-case2%>%
+  ggplot(aes(x=MaritalStatus)) +geom_bar(stat = 'count',color ="black") + ggtitle("Marital Status by Job Role" )+
+  theme_solarized() +facet_grid(rows=vars(JobRole))
+
+x + scale_fill_hc()
+
+
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=MaritalStatus,fill=JobRole)) +geom_bar(position="fill",color ="black") + ggtitle("Marital Status Percentage by Job Role")+
+  theme_solarized()  
+
+x + scale_fill_hc()
+
+
+  
+```
+
+##  of these give us any good trends so we will run a Linear Regression model to determine which factors influence job role the most.
+```{r}
+
+#Look at factors that influence Job Role the most
+fitJR<- lm(JobRole~.,data=case2x)
+summary(fitJR)
+#use only the influential from original
+fitJR2<- lm(JobRole~Department+JobLevel+MonthlyIncome+Education+OverTime+TrainingTimesLastYear,data=case2x)
+summary(fitJR2)
+
+
+```
+## We can see from the first LM model that Department,JobLevel, MonthlyIncome,Education,OverTime, and Training times influence this the most. We will explore this in a ggpairs model of the top 3.
+
+```{r}
+case2%>% select(Department,JobRole,JobLevel,MonthlyIncome)%>% ggpairs(aes(color=JobRole))
+
+
+```
+## Most of these directly correlate to the position themselves, so we will take a look at monthly income, education and training times.
+
+```{r}
+
+
+#Education
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=Education,fill=JobRole)) +geom_bar(stat = 'count',color ="black") + ggtitle("Education by Job Role" )+
+  theme_solarized()  
+
+x + scale_fill_hc()
+#percentage
+x<-case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=Education,fill=JobRole)) +geom_bar(position ="fill",color ="black") + ggtitle("Education by Job Role" )+
+  theme_solarized()  
+
+x + scale_fill_hc()
+
+case2 %>% group_by(JobRole)%>% ggplot(aes(x=Education,fill=JobRole))+
+  geom_histogram(alpha=0.5,position="identity",color="black")+
+  ggtitle("Education Levels by Job Role")+facet_grid(rows=vars(JobRole))
+
+
+#look at Training Times
+x=case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=TrainingTimesLastYear, fill=JobRole)) +geom_bar(position= 'dodge') + ggtitle("Trainings by Job Role")+
+  theme_solarized()
+x + scale_fill_hc()
+#percentages
+x=case2%>%group_by(JobRole)%>%
+  ggplot(aes(x=TrainingTimesLastYear, fill=JobRole)) +geom_bar(position= 'fill') + ggtitle("Training Percentages by Job Role")+
+  theme_solarized()
+x + scale_fill_hc()
+
+
+#monthly income
+x=case2%>%group_by(JobRole)%>%
+  ggplot(aes(y=OverTime,x=MonthlyIncome, color=JobRole)) +geom_point() +
+  theme_solarized()
+  x + scale_fill_hc()
+
+```
+
+
+
+## We then looked into the factors that predicted Monthly Income(Salary) by running a linear regression model
+```{r}
+#Salary model prediction
+
+#Check all variables for Salary Prediction
+fitSal <- lm(MonthlyIncome~.,data=case2x)
+summary(fitSal)
+
+#These are the most significant influencers of salary
+fitSal2 <- lm(MonthlyIncome~BusinessTravel+Department+DistanceFromHome+JobLevel+JobRole+TotalWorkingYears+YearsWithCurrManager,data=case2x)
+summary(fitSal2)
+
+
+#JobLevel has the highest correlation to MonthlyIncome with TotalWorkingYears as the next highest.
+#RMSE for this model is 1387.30 (which is well below the 3000 threshold).
+fitSal3 <- lm(MonthlyIncome~JobLevel+TotalWorkingYears+YearsWithCurrManager,data=case2x)
+
+summary(fitSal3)
+
+```
+## We will use this model to predict the dataset with no Salary/Income data. We have included this as an csv document.
+```{r}
+
+predictionSal = predict(fitSal3,case2NS)
+predictionSal
+predictionSal2<- data.frame(MonthlyIncome = predictionSal)
+predSal = data.frame(ID = case2NS[1], MonthlyIncome = predictionSal2)
+predSal
+
+
+
+write.csv(predSal,"C:/Users/rache/Documents/DDS/Unit 14/Case2PredictionsLiercke_Salary.csv", row.names=FALSE)
+```
+
+
+
+
+
+## To check the top 3 variables that lead to attrition, we will run a linear regression model and look at p-values.
+## First we need to convert the variables into levels in order to run a linear regression model.
+
+
+
+```{r}
+
+
+#change variables to factors and rename the levels to factored values
+case2NA$BusinessTravel <- as.factor(case2NA$BusinessTravel)
+case2NA$Department <- as.factor(case2NA$Department)
+case2NA$EducationField <- as.factor(case2NA$EducationField)
+case2NA$Gender <- as.factor(case2NA$Gender)
+case2NA$JobRole <- as.factor(case2NA$JobRole)
+case2NA$MaritalStatus <- as.factor(case2NA$MaritalStatus)
+case2NA$OverTime <- as.factor(case2NA$OverTime)
+
+
+
+#Gender levels: 1=Male 2=Female
+levels(case2NA$Gender) <- c(1,2)
+levels(case2NA$Gender)
+#OverTime levels: 1=Yes 2=No
+levels(case2NA$OverTime) <- c(1,2)
+levels(case2NA$OverTime)
+#MaritalStatus levels: 1=Divorced 2=Married 3=Single
+levels(case2NA$MaritalStatus) <- c(1,2,3)
+levels(case2x$MaritalStatus)
+#BusinessTravel levels:1=Non-Travel, 2=Travel Frequently 3=Travel Rarely
+levels(case2NA$BusinessTravel) <- c(1,2,3)
+levels(case2NA$BusinessTravel)
+#Department levels: 1=Human Resources(HR) 2=Research & Development(R&D) 3= Sales
+levels(case2NA$Department) <- c(1,2,3)
+levels(case2NA$Department)
+#EducationField levels: 1= Human Resources(HR) 2=Life Sciences 3=Marketing
+# 4=Medical 5=Other 6=Technical Degree
+levels(case2NA$EducationField) <- c(1,2,3,4,5,6)
+levels(case2NA$EducationField)
+#JobRole levels: 1=Healthcare Representative 2=Human Resources 3=Laboratory Tech
+# 4=Manager 5=Manufacturing Director 6=Research Director
+# 7=Research Scientist 8=Sales Executive 9=Sales Representative
+levels(case2NA$JobRole) <- c(1,2,3,4,5,6,7,8,9)
+levels(case2NA$JobRole)
+
+
+
+
+
+
+#Change the values back to numeric to make them all one variable rather than broken
+#out by Job1 and Job2
+
+case2NA$OverTime<- as.numeric(case2NA$OverTime)
+case2NA$BusinessTravel <- as.numeric(case2NA$BusinessTravel)
+case2NA$Department <- as.numeric(case2NA$Department)
+case2NA$EducationField <- as.numeric(case2NA$EducationField)
+case2NA$Gender <- as.numeric(case2NA$Gender)
+case2NA$JobRole <- as.numeric(case2NA$JobRole)
+case2NA$MaritalStatus <- as.numeric(case2NA$MaritalStatus)
+
+
+```
+
+
+# Now run the model(s) to see which variables are most influential
+```{r}
+
+#Run a LM model for attrition with all variables
+fit<- lm(Attrition~.,data=case2x)
+summary(fit)
+
+#Use significant variables from the initial LM model
+fitA1<- lm(Attrition~JobInvolvement+JobSatisfaction+MaritalStatus+NumCompaniesWorked+
+           OverTime+YearsSinceLastPromotion, data=case2x)
+
+summary(fitA1)
+#remove number of companies worked and try again
+fitA2<- lm(Attrition~JobInvolvement+JobSatisfaction+MaritalStatus+
+             OverTime+YearsSinceLastPromotion, data=case2x)
+summary(fitA2)
+fitA3<- lm(Attrition~JobInvolvement+JobSatisfaction+MaritalStatus+
+             OverTime, data=case2x)
+summary(fitA3)
+
+
+
+```
+
+
+# This linear regression model provides us with Job Involvement, Job Satisfaction, Marital Status, and OverTime as the most influential variables in predicting attrition. Using the p-values to get the top three, we would remove Job Satisfaction from this list.
+## Our top three influential variables are Job Involvement, Marital Status, and OverTime.
+
+
+
+### To test for attrition we will use a smaller model so we have a more even split of yes and no
+
+```{r}
+#Split the dataset into Attrition = Yes and Attrition = No
+set.seed(100)
+case2yes<- case2x %>% filter(Attrition == 2)
+case2no<- case2x %>% filter(Attrition == 1)
+
+#Create a train and test from the Attrition = Yes group
+splitPerc = .70
+trainIndices = sample(1:dim(case2yes)[1],round(splitPerc*dim(case2yes)[1]))
+trainy = case2yes[trainIndices,]
+testy = case2yes[-trainIndices,]
+
+
+#Split the Attrition = No data into a train and test then use the test set to split into another train and test
+splitPerc = .70
+trainIndices = sample(1:dim(case2no)[1],round(splitPerc*dim(case2no)[1]))
+trainN = case2no[trainIndices,]
+testN = case2no[-trainIndices,]
+
+
+#Split the testN into another train and test
+splitPerc = .70
+trainIndices = sample(1:dim(testN)[1],round(splitPerc*dim(testN)[1]))
+trainN2 = testN[trainIndices,]
+testN2 = testN[-trainIndices,]
+
+
+
+#Then combine the Attrition = Yes set with the second train and test set of Attrition = No
+train = full_join(trainy,trainN2)
+test = full_join(testy,testN2)
+
+combined = full_join(train,test)
+```
+
+
+## Using the datasets created in the last step, we will train a model to predict if the employee stays or not.
+
+```{r}
+iterations = 500
+masterSpec = matrix(nrow = iterations)
+masterSens = matrix(nrow = iterations)
+splitPerc = .7 #Training / Test split Percentage
+for(j in 1:iterations)
+{
+  
+  trainIndices = sample(1:dim(combined)[1],round(splitPerc * dim(combined)[1]))
+  train1 = combined[trainIndices,]
+  test1 = combined[-trainIndices,]
+  
+  model = naiveBayes(train1[,c(3,6,7,11,14,17,18,21,22,29,31,32,33)],train1$Attrition,laplace = 1)
+  table(predict(model,test1[,c(3,6,7,11,14,17,18,21,22,29,31,32,33)]),test1$Attrition)
+  CM = confusionMatrix(table(predict(model,test1[,c(3,6,7,11,14,17,18,21,22,29,31,32,33)]),test1$Attrition))
+  masterSpec[j] = CM$byClass[2]
+  masterSens[j] = CM$byClass[1]
+}
+MeanSpec = colMeans(masterSpec)
+MeanSpec
+MeanSens = colMeans(masterSens)
+MeanSens
+
+model = naiveBayes(train1[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)],train1$Attrition,laplace = 1)
+table(predict(model,test1[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)]),test1$Attrition)
+confusionMatrix(table(predict(model,test1[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)]),test1$Attrition))
+CM = confusionMatrix(table(predict(model,test1[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)]),test1$Attrition))
+```
+
+## We then tested this model on the overall dataset.
+```{r}
+set.seed(75)
+splitPerc = .7
+trainIndices = sample(1:dim(case2x)[1],round(splitPerc * dim(case2x)[1]))
+trainOverall = case2x[trainIndices,]
+testOverall = case2x[-trainIndices,]
+model = naiveBayes(trainOverall[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)],trainOverall$Attrition,laplace = 1)
+table(predict(model,testOverall[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)]),testOverall$Attrition)
+confusionMatrix(table(predict(model,testOverall[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)]),testOverall$Attrition))
+
+
+```
+
+
+## This model ended up getting over 60% specificity and sensitivity. We used this to predict the dataset that didn't have Attrition values.
+```{r}
+#Predict the data-set without Attrition using this model
+
+case2NA2 <- case2NA
+case2NA2 <- case2NA[,-9]
+case2NA2 <- case2NA2[,-21]
+case2NA2 <- case2NA2[,-25]
+model = naiveBayes(trainOverall[,c(3,6,7,11,14,17,18,21,22,27,29,31,32,33)],trainOverall$Attrition,laplace = 1)
+case2NA2$Attrition = "Attrition"
+case2NA2 <- case2NA2 %>% relocate(Attrition, .before = Age)
+predictionAtt = predict(model,case2NA2)
+predictionAtt
+predictionAtt2<- data.frame(Attrition = predictionAtt)
+predAtt = data.frame(ID = case2NA[1], Attrition = predictionAtt2)
+levels(predAtt$Attrition) <- c("No", "Yes")
+levels(predAtt$Attrition)
+
+
+write.csv(predAtt,"C:/Users/rache/Documents/DDS/Unit 14/Case2PredictionsLiercke_Attrition.csv", row.names=FALSE)
+
+
+
+```
+
+
+
+# Conclusion:
+ We were able to see that Attrition factored into Job Role. Managers and Research Directors had the highest salaries. Research Scientists had the most trainings.
+The biggest factors that predicted Monthly Income were Department, Job Level, Total Working Years, and Years with Current Manager. These provided us an RMSE value less than $3000.
+The biggest factors for predicting Attrition were Job Satisfaction, Marital Status, and Over Time. These along with 10 other factors were able to predict Attrition above 60% specificty and sensitivity.
+
+Provided below are the links to the presentation and the rshiny app and are also provided at the end of the powerpoint.
+
+Presentation:https://youtu.be/T95nIE4KxRA
+Rshiny: https://rachelliercke.shinyapps.io/Case2_Rshiny_RL/
+
